@@ -1,0 +1,9 @@
+qwen-vl-utils
+bitsandbytes
+transformers
+torch
+open_clip_torch
+ultralytics
+opencv-python
+black
+matplotlib
