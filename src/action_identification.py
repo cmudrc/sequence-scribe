@@ -4,7 +4,7 @@ import torch.amp
 from .vlm import make_vlm_processor, make_vlm_model
 
 
-def assess_action(path_to_images: str, start_index: int, end_index: int) -> str:
+def extract_action(path_to_images: str, start_index: int, end_index: int) -> str:
 
     PROMPT = """
     You are analyzing a sequence of images depicting an atomic action on a graphic user interface. The sequence contains:
