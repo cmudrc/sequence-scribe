@@ -1,5 +1,6 @@
 qwen-vl-utils
 bitsandbytes
+hmmlearn
 transformers
 torch
 open_clip_torch
