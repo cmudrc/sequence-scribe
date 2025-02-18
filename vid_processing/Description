@@ -1,3 +1,4 @@
 Two python scripts have been added.
 video_extractor.py allows you (user) to choose an input video file (mp4 format), splits it frame by frame (rate: 1 fps) into image files (jpg format), and saves all images sequentially to a destination directory of your choosing.
 multi_img_parser.py allows you (user) to choose a folder/directory where frame images are stored, runs omniparser on each image sequentially and stores the parsed data in a csv file in the same directory.
+The original requirements file included with the OmniParser setup from Microsoft should suffice for these scripts.
