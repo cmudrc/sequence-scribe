@@ -1,10 +1,39 @@
-qwen-vl-utils
-bitsandbytes
-hmmlearn
-transformers
-torch
-open_clip_torch
-ultralytics
-opencv-python
-black
-matplotlib
+# Main frameworks
+torch==2.2.1
+torchvision==0.17.1
+numpy==1.26.4
+
+# Deep learning / ML libraries
+transformers==4.42.3
+bitsandbytes==0.41.1
+accelerate==0.27.2
+timm==0.9.16
+open_clip_torch==2.24.0
+hmmlearn==0.3.2
+einops==0.8.0
+
+# Computer vision
+ultralytics==8.3.70
+supervision==0.18.0
+opencv-python==4.9.0.80
+opencv-python-headless==4.11.0.86
+easyocr==1.7.1
+Pillow==10.2.0
+
+# PaddlePaddle ecosystem
+paddlepaddle==2.6.2
+paddleocr==2.10.0
+
+# Hugging Face ecosystem
+huggingface_hub==0.29.3
+qwen-v1-utils # Use latest version
+
+# Utilities and tools
+matplotlib==3.8.2
+black==24.2.0
+setuptools==69.1.0
+dill==0.3.8
+
+# API and UI
+openai==1.12.0
+gradio==4.19.2
