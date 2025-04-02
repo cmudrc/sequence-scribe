@@ -51,7 +51,7 @@ def extract_frames_from_video(
 ) -> None:
     
     """
-    Extract frames from a video at 1 second intervals (based on FPS)
+    Extract frames from a video at 1 second intervals
     """
     
     # Create the output folder if it doesn't exist
@@ -93,11 +93,9 @@ def extract_frames_from_video(
 
 
 def parse_frame(frame_path: str, previous_elements: List[Dict] = None) -> List[Dict[str, Any]]:
-    
     """
     Process an image and extract structured data about UI elements.
     """
-    
     if previous_elements is None:
         previous_elements = []
         
@@ -111,78 +109,117 @@ def parse_frame(frame_path: str, previous_elements: List[Dict] = None) -> List[D
     image_width, image_height = image.size
     image_np = np.array(image)
     
+    # Get OCR bounding boxes
     ocr_bbox_rslt, _ = check_ocr_box(
         frame_path,
         display_img=False,
-        output_bb_format = 'xyxy',
-        goal_filtering = None,
+        output_bb_format='xyxy',
+        goal_filtering=None,
         easyocr_args={'paragraph': False, 'text_threshold': 0.9},
-        use_paddleocr=use_paddleocr,
+        use_paddleocr=use_paddleocr
     )
     text, ocr_bbox = ocr_bbox_rslt
     
-    _, _, parsed_content_list = get_som_labeled_img(
-        frame_path,
-        yolo_model,
-        BOX_TRESHOLD=box_threshold,
-        output_coord_in_ratio=True,
-        ocr_bbox=ocr_bbox,
-        draw_bbox_config={},
-        caption_model_processor=caption_model_processor,
-        ocr_text=text,
-        iou_threshold=iou_threshold,
-        imgsz=imgsz,
-        batch_size=icon_process_batch_size
-    )
-    
-    if not parsed_content_list:
-        print(f"WARNING: No elements detected in {frame_path}")
-        return []
-    
-    structured_data = []
-    for element in parsed_content_list:
-        bbox = element.get('bbox', None)
-        if bbox is None or not isinstance(bbox, list):
-            print(f"WARNING: Skipping element with missing bbox in {frame_path}")
-            continue
+    try:
+        # Get the parsed content list
+        _, _, parsed_content_list = get_som_labeled_img(
+            frame_path,
+            yolo_model,
+            BOX_TRESHOLD=box_threshold,
+            output_coord_in_ratio=True,
+            ocr_bbox=ocr_bbox,
+            draw_bbox_config={},
+            caption_model_processor=caption_model_processor,
+            ocr_text=text,
+            iou_threshold=iou_threshold,
+            imgsz=imgsz,
+            batch_size=icon_process_batch_size
+        )
         
-        if isinstance(bbox, list) and any(isinstance(v, float) and np.isnan(v) for v in bbox):
-            print(f"WARNING: Skipping element with NaN bbox in {frame_path}")
-            continue
+        if not parsed_content_list:
+            print(f"WARNING: No elements detected in {frame_path}")
+            return []
         
-        bbox = [max(0, int(v)) for v in bbox]
+        # Create a structured output
+        structured_data = []
+        for i, element in enumerate(parsed_content_list):
+            try:
+                if not isinstance(element, dict):
+                    print(f"WARNING: Element {i} is not a dictionary: {type(element)}")
+                    continue
+                
+                bbox = element.get('bbox', None)
+                if not isinstance(bbox, list) or len(bbox) != 4:
+                    print(f"WARNING: Invalid bbox format for element {i}: {bbox}")
+                    continue
+                
+                # Convert to pixel coordinates (for processing)
+                bbox_pixels = [
+                    int(bbox[0] * image_width),
+                    int(bbox[1] * image_height),
+                    int(bbox[2] * image_width),
+                    int(bbox[3] * image_height)
+                ]
+                
+                # Generate element ID
+                element_id = generate_element_id(bbox_pixels, element.get('content', ''))
+                
+                # Calculate normalized bbox (cx, cy, w, h format)
+                normalized_bbox = normalize_bbox(bbox_pixels, image_width, image_height)
+                
+                # Get dominant color
+                dominant_color = get_dominant_color(image_np, bbox_pixels)
+                
+                # Determine interaction type
+                interaction_type = categorize_interactivity(element.get('type', 'unknown'))
+                
+                # Get OCR confidence (if available)
+                ocr_confidence = element.get('ocr_confidence', 0.0)
+                if ocr_confidence is None or not isinstance(ocr_confidence, (int, float)):
+                    ocr_confidence = 0.0
+                
+                # Compute IOU with previous elements
+                max_iou = 0
+                if previous_elements:
+                    for prev_element in previous_elements:
+                        prev_bbox_str = prev_element.get('Bounding Box', '')
+                        if prev_bbox_str:
+                            try:
+                                # Convert string representation back to list
+                                import ast
+                                prev_bbox = ast.literal_eval(prev_bbox_str)
+                                iou = compute_iou(bbox_pixels, prev_bbox)
+                                max_iou = max(max_iou, iou)
+                            except (ValueError, SyntaxError):
+                                continue
+                
+                # Add to structured data
+                structured_data.append({
+                    "Image Name": os.path.basename(frame_path),
+                    "Element ID": element_id,
+                    "Type": element.get('type', 'unknown'),
+                    "Bounding Box": bbox_pixels,
+                    "Normalized Bounding Box": normalized_bbox,
+                    "Interactivity": element.get('interactivity', False),
+                    "Interaction Type": interaction_type,  # Changed from "Interactivity Type"
+                    "Content": element.get('content', ''),
+                    "OCR Confidence": ocr_confidence,
+                    "IOU with Previous": max_iou,
+                    "Dominant Color": dominant_color,
+                })
+                
+            except Exception as e:
+                import traceback
+                print(f"ERROR processing element {i}: {str(e)}")
+                print(traceback.format_exc())
+                
+        return structured_data
         
-        element_id = generate_element_id(bbox, element.get('content', ''))
-        normalized_bbox = normalize_bbox(bbox, image_width, image_height)
-        dominant_color = get_dominant_color(image_np, bbox)
-        interactivity_type = categorize_interactivity(element['type'])
-        ocr_confidence = element.get('ocr_confidence', None)
-        
-        # Ensure OCR Confidence is a float, otherwise set it to 0.0
-        if ocr_confidence is None or not isinstance(ocr_confidence, (float, int)) or np.isnan(ocr_confidence):
-            ocr_confidence = 0.0
-            
-        # Compute IOU with previous elements
-        max_iou = 0
-        for prev_element in previous_elements:
-            iou = compute_iou(bbox, prev_element['bbox'])
-            max_iou = max(max_iou, iou)
-            
-        structured_data.append({
-            "Image Name": os.path.basename(frame_path),
-            "Element ID": element_id,
-            "Type": element['type'],
-            "Bounding Box": bbox,
-            "Normalized Bounding Box": normalized_bbox,
-            "Interactivity": element['interactivity'],
-            "Interactivity Type": interactivity_type,
-            "Content": element.get('content', ''),
-            "OCR Confidence": ocr_confidence,
-            "IOU with Previous": max_iou, 
-            "Dominant Color": dominant_color,
-        })
-        
-    return structured_data
+    except Exception as e:
+        import traceback
+        print(f"ERROR in get_som_labeled_img: {str(e)}")
+        print(traceback.format_exc())
+        raise
 
 
 #def diff_frames(frame1: str, frame2: str) -> str:
@@ -224,7 +261,7 @@ def extract_sequence_from_video(
         "Bounding Box",
         "Normalized Bounding Box",
         "Interactivity",
-        "Interactivity Type",
+        "Interaction Type",
         "Content",
         "OCR Confidence",
         "IOU with Previous",
@@ -238,13 +275,34 @@ def extract_sequence_from_video(
         for frame_file in frame_files:
             frame_path = os.path.join(frames_folder, frame_file)
             try:
+                print(f"Processing {frame_file}")
                 parsed_data = parse_frame(frame_path, previous_elements)
-                previous_elements = parsed_data
+                
+                # Convert data for CSV output
+                csv_rows = []
+                for item in parsed_data:
+                    row = {}
+                    for key, value in item.items():
+                        if key == "Bounding Box" or key == "Normalized Bounding Box":
+                            row[key] = str(value)
+                        elif key == "Dominant Color":
+                            row[key] = str(value)
+                        elif key == "OCR Confidence":
+                            row[key] = float(value) if value is not None else 0.0
+                        elif key == "IOU with Previous":
+                            row[key] = float(value) if value is not None else 0.0
+                        else:
+                            row[key] = value
+                    csv_rows.append(row)
+                
+                writer.writerows(csv_rows)
+                previous_elements = parsed_data  # Update for next frame
                 all_elements.extend(parsed_data)
-                writer.writerows(parsed_data)
-                print(f'Processed {frame_file}')
+                print(f'Successfully processed {frame_file}')
             except Exception as e:
+                import traceback
                 print(f"Failed to process {frame_file}: {str(e)}")
+                print(traceback.format_exc())
                 
     print(f"Parsed data saved to {csv_path}")
     return all_elements, csv_path
