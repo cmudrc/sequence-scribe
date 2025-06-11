@@ -345,3 +345,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+# This code can be run as a script directly or with CLI arguments.
+# Interactive mode (It will prompt for CSV path if not provided): python src/naive/naive_json_embedding_headless.py
+# CLI mode (With arguments): python src/naive/naive_json_embedding_headless.py path/to/csv.csv -o output_dir -m model_name
