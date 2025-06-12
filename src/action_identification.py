@@ -3,11 +3,11 @@ import cv2
 import csv
 import torch
 import numpy as np
+import argparse
+import sys
 from PIL import Image
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
-import tkinter as Tk
-from tkinter import filedialog
 
 from utils import (
     check_ocr_box,
@@ -23,6 +23,11 @@ from utils import (
 
 # Set device for the model
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Default paths
+DEFAULT_VIDEO_PATH = "./video.mp4"
+DEFAULT_OUTPUT_FOLDER = "./output"
+DEFAULT_INPUT_FOLDER = "./input"
 
 # Function to search for the model in parent dictionaies
 def find_model_path(model_filename='best.pt', search_folder='weights/icon_detect'):
@@ -343,47 +348,123 @@ def extract_actions_from_videos(video_paths: list[str], output_folder: str = Non
     return results
 
 
-# Function to select a video file using GUI
-def select_video_file():
-    root = Tk.Tk()
-    root.withdraw()
-    file_path = filedialog.askopenfilename(
-        title='Select video file',
-        filetypes=[('Video files', '*.mp4 *.avi *.mov *.mkv')]
+def get_user_input(prompt: str, default: str = None) -> str:
+    """
+    Get user input with optional default value.
+    """
+    if default:
+        user_input = input(f"{prompt} (default: {default}): ").strip()
+        return user_input if user_input else default
+    else:
+        return input(f"{prompt}: ").strip()
+
+
+def validate_video_path(video_path: str) -> bool:
+    """
+    Validate if the video path exists and is a valid video file.
+    """
+    if not os.path.exists(video_path):
+        print(f"Error: Video file '{video_path}' does not exist.")
+        return False
+    
+    # Check if it's a video file by extension
+    valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm']
+    if not any(video_path.lower().endswith(ext) for ext in valid_extensions):
+        print(f"Error: '{video_path}' does not appear to be a valid video file.")
+        return False
+    
+    return True
+
+
+def create_argument_parser():
+    """
+    Create and configure the argument parser.
+    """
+    parser = argparse.ArgumentParser(
+        description='Extract UI elements from video frames for action identification.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python action_identification.py
+  python action_identification.py --video ./my_video.mp4
+  python action_identification.py --video ./my_video.mp4 --output ./results
+  python action_identification.py -v ./my_video.mp4 -o ./results
+
+Default paths:
+  Video: ./video.mp4
+  Output: ./output
+        '''
     )
-    return file_path
-
-
-# Function to select an output folder using GUI
-def select_output_folder():
-    root = Tk.Tk()
-    root.withdraw()
-    folder_path = filedialog.askdirectory(title='Select output folder')
-    return folder_path
+    
+    parser.add_argument(
+        '--video', '-v',
+        type=str,
+        help=f'Path to the input video file (default: {DEFAULT_VIDEO_PATH})'
+    )
+    
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        help=f'Path to the output folder (default: {DEFAULT_OUTPUT_FOLDER})'
+    )
+    
+    return parser
 
 
 def main():
-    print("Select a video file to process:")
-    video_path = select_video_file()
+    """
+    Main function to handle both CLI and interactive modes.
+    """
+    parser = create_argument_parser()
+    args = parser.parse_args()
     
-    if not video_path:
-        print("No video file selected. Exiting...")
-        return
+    # Determine video path
+    if args.video:
+        video_path = args.video
+    else:
+        print("No video path provided via command line.")
+        video_path = get_user_input("Enter video file path", DEFAULT_VIDEO_PATH)
     
-    print("Select an output folder (or cancel to use default):")
-    output_folder = select_output_folder()
+    # Validate video path
+    if not validate_video_path(video_path):
+        print("Exiting due to invalid video path.")
+        sys.exit(1)
     
+    # Determine output folder
+    if args.output:
+        output_folder = args.output
+    else:
+        if not args.video:  # Only prompt if not provided via CLI
+            output_folder = get_user_input("Enter output folder path", DEFAULT_OUTPUT_FOLDER)
+        else:
+            output_folder = DEFAULT_OUTPUT_FOLDER
+    
+    # If output folder is not provided and no default, create one based on video location
     if not output_folder:
         output_folder = os.path.join(os.path.dirname(video_path), "action_extraction_results")
         print(f"Using default output folder: {output_folder}")
-        
-    elements, csv_path = extract_sequence_from_video(video_path, output_folder)
-    print(f"Processed {len(elements)} UI elements from the video")
-    print(f"Results saved to: {csv_path}")
+    
+    print(f"Processing video: {video_path}")
+    print(f"Output folder: {output_folder}")
+    
+    try:
+        elements, csv_path = extract_sequence_from_video(video_path, output_folder)
+        print(f"Processed {len(elements)} UI elements from the video")
+        print(f"Results saved to: {csv_path}")
+    except Exception as e:
+        print(f"Error processing video: {str(e)}")
+        sys.exit(1)
     
 
 if __name__ == "__main__":
     main()
+    
+# This code is runnable as a script as well as using CLI arguments.
+# To run it as a script, double check the default paths and ensure the necessary items are available. Run: python src/action_identification.py
+# To run it with CLI arguments, use: python src/action_identification.py --video path/to/video.mp4 --output path/to/output'
+# For help, run: python action_identification.py --help
+    
+    
 
 
 #
